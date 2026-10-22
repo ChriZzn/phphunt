@@ -5,8 +5,8 @@
 # Cross-platform: Linux (Debian/RHEL/SUSE/Alpine), macOS, Windows (Git Bash / MSYS2 / Cygwin / WSL).
 #
 # One-liners:
-#   curl -fsSL https://raw.githubusercontent.com/ChriZzn/php2shell-detect/main/php-hunt.sh | sudo bash
-#   curl -fsSL https://raw.githubusercontent.com/ChriZzn/php2shell-detect/main/php-hunt.sh | sudo bash -s -- --postex
+#   curl -fsSL https://raw.githubusercontent.com/ChriZzn/phphunt/main/php-hunt.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/ChriZzn/phphunt/main/php-hunt.sh | sudo bash -s -- --postex
 #   sudo bash php-hunt.sh --since 2026-10-01
 #
 # Read-only: prints a report and changes nothing on the system (it only creates a
@@ -27,7 +27,7 @@ It always runs the log scan first, then asks whether to run the host checks.
 
 Usage:
   sudo bash php-hunt.sh [options]
-  curl -fsSL https://raw.githubusercontent.com/ChriZzn/php2shell-detect/main/php-hunt.sh | sudo bash
+  curl -fsSL https://raw.githubusercontent.com/ChriZzn/phphunt/main/php-hunt.sh | sudo bash
 
 Options:
   --logdir DIR      Apache log directory (auto-detected by default; repeatable)

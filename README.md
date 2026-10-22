@@ -12,7 +12,7 @@ timestamp reference file in a temp dir and removes it on exit.) It runs on Linux
 ## Run it with a one-liner
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ChriZzn/php2shell-detect/main/php-hunt.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/ChriZzn/phphunt/main/php-hunt.sh | sudo bash
 ```
 
 Root is needed to read the logs and the webroots (on Windows, run Git Bash as
