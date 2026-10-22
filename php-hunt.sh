@@ -16,7 +16,7 @@ export LC_ALL=C
 VERSION="1.0"
 
 # ---------------- defaults / options ----------------
-NOLOGS=""; NOPOSTEX=""; FORCE_POSTEX=""; ONLYPOSTEX=""; SINCE_IN=""; WEBUSER_FORCE=""; TUS=""
+NOLOGS=""; NOPOSTEX=""; FORCE_POSTEX=""; ONLYPOSTEX=""; SINCE_IN=""; WEBUSER_FORCE=""; TUS=""; QUIET=""
 LOGDIRS=(); WEBROOTS=()
 
 usage() {
@@ -38,6 +38,7 @@ Options:
   --postex          run the host checks without asking
   --no-postex       skip the host checks (do not ask)
   --only-postex     skip the log scan, run only the host checks
+  -q, --quiet       no progress output on stderr (the report is unchanged)
   -h, --help        this help
 
 The prompt is read from /dev/tty, so it still works through the pipe. Without a
@@ -58,6 +59,7 @@ while [ $# -gt 0 ]; do
     --postex)      FORCE_POSTEX=1; shift ;;
     --no-postex|--no-host) NOPOSTEX=1; shift ;;
     --only-postex|--no-logs) ONLYPOSTEX=1; shift ;;
+    -q|--quiet)  QUIET=1; shift ;;
     -h|--help)   usage; exit 0 ;;
     *)           echo "unknown option: $1" >&2; usage >&2; exit 1 ;;
   esac
@@ -144,6 +146,16 @@ for d in $CAND_ROOT; do [ ${#WEBROOTS[@]} -gt 0 ] || add_rdirs "$d"; done
 
 # ---------------- helpers ----------------
 sec() { echo; echo "=== $* ==="; }
+# progress: transient status on stderr so the report (stdout) stays clean.
+# On a terminal it rewrites one line in place; otherwise it prints plain lines.
+PROG_TTY=0; [ -t 2 ] && PROG_TTY=1
+progress() {
+  [ "$QUIET" = 1 ] && return
+  if [ "$PROG_TTY" = 1 ]; then printf '\r\033[K%s' "$1" >&2
+  else printf '%s\n' "$1" >&2; fi
+}
+progress_done() { [ "$QUIET" = 1 ] && return; [ "$PROG_TTY" = 1 ] && printf '\r\033[K' >&2; }
+fsize() { du -h "$1" 2>/dev/null | cut -f1; }   # human size, best-effort
 readlog() { case "$1" in *.gz) gzip -cd "$1" 2>/dev/null;; *) cat "$1" 2>/dev/null;; esac; }
 changed() { # list php-ish files under $1 changed since $REF
   if [ "$GNUFIND" = 1 ]; then
@@ -248,9 +260,12 @@ for d in "${LOGDIRS[@]}"; do
   for f in "$d"/*error*log*;   do [ -f "$f" ] && ERRORS+=("$f"); done
 done
 
+progress "[logs] parsing ${#ACCESS[@]} access + ${#ERRORS[@]} error files (large logs can take a while)…"
 : > "$TMP/err"
+ne=${#ERRORS[@]}; ie=0
 for f in "${ERRORS[@]}"; do
-  [ -r "$f" ] || { echo "  !! cannot read $f"; continue; }
+  ie=$((ie+1)); progress "[logs] error log $ie/$ne: ${f##*/} ($(fsize "$f"))"
+  [ -r "$f" ] || { progress_done; echo "  !! cannot read $f"; continue; }
   readlog "$f" | awk -v F="${f##*/}" '
     { sub(/\r$/,""); l=tolower($0)
       i=index($0,"["); day="?"
@@ -279,9 +294,12 @@ for f in "${ERRORS[@]}"; do
 done
 
 : > "$TMP/acc"
+na=${#ACCESS[@]}; ia=0
 for f in "${ACCESS[@]}"; do
-  [ -r "$f" ] || { echo "  !! cannot read $f"; continue; }
-  readlog "$f" | awk -v F="${f##*/}" -v TUS="$TUS" '
+  ia=$((ia+1)); progress "[logs] access log $ia/$na: ${f##*/} ($(fsize "$f"))"
+  [ -r "$f" ] || { progress_done; echo "  !! cannot read $f"; continue; }
+  readlog "$f" | awk -v F="${f##*/}" -v TUS="$TUS" -v tty="$PROG_TTY" -v quiet="${QUIET:-0}" -v tag="$ia/$na" '
+    (tty==1 && quiet!=1 && NR % 500000 == 0){ printf "\r\033[K  [logs] access log %s: %s: %d lines…", tag, F, NR > "/dev/stderr" }
     BEGIN{
       np=0
       np++; nm[np]="php ini injection (allow_url_include/auto_prepend/-d)"; P[np]="allow_url_include|auto_prepend_file|auto_append_file|%2dd\\+|(\\?|&)-d[+ %]|\\?-[sdn]([^a-z0-9]|$)"
@@ -346,6 +364,7 @@ for f in "${ACCESS[@]}"; do
       }
     }' >> "$TMP/acc"
 done
+progress_done
 
 echo; echo "---- part A: logs (${#ACCESS[@]} access, ${#ERRORS[@]} error files) ----"
 
@@ -409,9 +428,11 @@ postex_unix() {
   tot=0
   for r in $WEBROOTS; do
     [ -d "$r" ] || continue
+    progress "[host] changed files: $r…"
     out=$(changed "$r")
     n=$(printf '%s\n' "$out" | grep -c .)
     tot=$((tot+n))
+    progress_done
     echo "  -- $r ($n)"
     printf '%s\n' "$out" | sort -r | head -40 | sed 's/^/  /'
   done
@@ -435,7 +456,9 @@ postex_unix() {
   wf=0
   for r in $WEBROOTS; do
     [ -d "$r" ] || continue
+    progress "[host] webshell scan: $r…"
     out=$(webshell_scan "$r")
+    progress_done
     [ -n "$out" ] && { printf '%s\n' "$out" | sed 's/^/  /'; wf=1; }
   done
   [ "$wf" = 0 ] && echo "   (none)"
@@ -503,7 +526,9 @@ postex_unix() {
   up2=0
   for r in "${WEBROOTS[@]}"; do
     [ -d "$r" ] || continue
-    out=$(dblext_polyglot "$r"); [ -n "$out" ] && { printf '%s\n' "$out" | sed 's/^/  /'; up2=1; }
+    progress "[host] upload/polyglot scan: $r…"
+    out=$(dblext_polyglot "$r"); progress_done
+    [ -n "$out" ] && { printf '%s\n' "$out" | sed 's/^/  /'; up2=1; }
   done
   [ "$up2" = 0 ] && echo "   (none)"
 
@@ -511,7 +536,9 @@ postex_unix() {
   rs2=0
   for r in "${WEBROOTS[@]}"; do
     [ -d "$r" ] || continue
-    out=$(recon_strings "$r"); [ -n "$out" ] && { printf '%s\n' "$out" | sed 's/^/  /'; rs2=1; }
+    progress "[host] recon-string scan: $r…"
+    out=$(recon_strings "$r"); progress_done
+    [ -n "$out" ] && { printf '%s\n' "$out" | sed 's/^/  /'; rs2=1; }
   done
   [ "$rs2" = 0 ] && echo "   (none)"
 
